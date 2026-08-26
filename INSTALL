@@ -1,0 +1,31 @@
+Installation instructions for openBibleViewer 0.9.1 (macOS Apple Silicon)
+------------------------------------------------------------------------
+
+Requirements:
+  - macOS 13+ (Apple Silicon / arm64)
+  - Qt 6.6+ (Core, Gui, Widgets, Xml, Network, Sql, PrintSupport,
+             WebEngineWidgets, Qml, Core5Compat)
+  - Xapian 1.4+ (full-text search engine, replaces CLucene)
+  - zlib (compression)
+  - CMake 3.16+
+  - Apple Clang or equivalent C++17 compiler
+
+Install dependencies via Homebrew:
+  brew install cmake qt@6 xapian zlib
+
+Note: Qt5WebKit is not available on Apple Silicon. This fork uses
+Qt6 + Qt6WebEngineWidgets as the web rendering engine.
+
+Build from source:
+  cd openBibleViewer-0.9.1
+  mkdir build && cd build
+  cmake -DCMAKE_BUILD_TYPE=Release ..
+  cmake --build . -j$(sysctl -n hw.ncpu)
+
+Create macOS app bundle and DMG:
+  bash package.sh
+
+The resulting DMG will be in dist/openBibleViewer-0.9.1-macOS-arm64.dmg.
+
+To run the app bundle directly:
+  open build/openBibleViewer.app

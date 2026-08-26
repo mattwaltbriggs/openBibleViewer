@@ -1,0 +1,29 @@
+# branches to build
+branches:
+  # whitelist
+  only:
+    - master
+
+# Operating system (build VM template)
+os: Visual Studio 2017
+
+# scripts that are called at very beginning, before repo cloning
+init:
+  - git config --global core.autocrlf input
+
+# clone directory
+clone_folder: c:\projects\openBibleViewer
+
+platform: x64
+configuration: Release
+
+# scripts to run before build
+before_build:
+  - echo Running cmake...
+  - cd c:\projects\openBibleViewer
+  
+build_script:
+  - cmake -G "Visual Studio 14 2015 Win64" -DCMAKE_INSTALL_PREFIX=%P%
+  - cmake --build . --target check
+
+

@@ -1,0 +1,37 @@
+/***************************************************************************
+openBibleViewer - Bible Study Tool
+Copyright (C) 2009-2012 Paul Walger <metaxy@walger.name>
+This program is free software; you can redistribute it and/or modify it
+under the terms of the GNU General Public License as published by the Free
+Software Foundation; either version 3 of the License, or (at your option)
+any later version.
+This program is distributed in the hope that it will be useful, but WITHOUT
+ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS
+FOR A PARTICULAR PURPOSE. See the GNU General Public License for more details.
+You should have received a copy of the GNU General Public License along with
+this program; if not, see <http://www.gnu.org/licenses/>.
+*****************************************************************************/
+#ifndef MODULEMAP_H
+#define MODULEMAP_H
+#include "module.h"
+/**
+ * ModuleMap contains the pointer to all modules in a map. And it deletes them when ModuleMap is deleted.
+ */
+class ModuleMap
+{
+public:
+    ModuleMap();
+    ~ModuleMap();
+
+    Module* module(const int id) const;
+    void insert(Module *module);
+    bool contains(const int id) const;
+    QMapIterator<int, Module*> it() const;
+
+    Module * moduleByUID(const QString &uid);
+    int UIDtoID(const QString &uid);
+private:
+        QMap<int, Module*> m_data;
+};
+
+#endif // MODULEMAP_H

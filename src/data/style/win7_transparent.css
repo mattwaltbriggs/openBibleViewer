@@ -1,0 +1,46 @@
+QMenuBar {
+	background:transparent;
+	border: none;
+}
+
+QMenuBar::item {
+	spacing: 3px; 
+	padding: 1px 4px;
+	border-radius: 8px;
+	background: qradialgradient(cx:0.5, cy:0.5, radius: 1.2, fx:0.5, fy:0.5, stop:0 rgb(255,255,255, 60%), stop:0.7 transparent);
+}
+
+QMenuBar::item:selected { 
+	border-radius: 8px;
+	border: 1px solid rgb(0,156,255);
+}
+
+QMenuBar::item:pressed {
+	border-radius: 8px;
+	background: qradialgradient(cx:0.5, cy:0.5, radius: 1.2, fx:0.5, fy:0.5, stop:0 rgb(255,255,255, 80%), stop:0.7 transparent);
+
+} 
+ 
+QToolBar {
+	background: transparent;
+	border: none;
+}
+ QToolBar#mainToolBar {
+
+	background-color: rgb(255,255,255, 40%);
+	border: 1px solid rgba(255,255,255, 60%);
+	
+	margin: 2px;
+}
+QDockWidget::title {
+	background-color: rgb(255,255,255, 40%);
+	text-align: left;
+	padding-left: 5px;
+	border: 1px solid rgba(255,255,255, 60%);
+	border-radius: 2px;
+}
+QLineEdit {
+	border-image: url(":/icons/lineedit.png");
+	border-width:4;
+	color:black;
+}

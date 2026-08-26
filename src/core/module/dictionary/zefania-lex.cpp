@@ -1,0 +1,451 @@
+/***************************************************************************
+openBibleViewer - Bible Study Tool
+Copyright (C) 2009-2012 Paul Walger <metaxy@walger.name>
+This program is free software; you can redistribute it and/or modify it
+under the terms of the GNU General Public License as published by the Free
+Software Foundation; either version 3 of the License, or (at your option)
+any later version.
+This program is distributed in the hope that it will be useful, but WITHOUT
+ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS
+FOR A PARTICULAR PURPOSE. See the GNU General Public License for more details.
+You should have received a copy of the GNU General Public License along with
+this program; if not, see <http://www.gnu.org/licenses/>.
+*****************************************************************************/
+#include "zefania-lex.h"
+#include "src/core/xapian_wrapper.h"
+#include "src/core/module/response/stringresponse.h"
+#include "src/core/search/searchtools.h"
+#include "src/core/zefania.h"
+
+ZefaniaLex::ZefaniaLex() : m_refText(nullptr)
+{
+}
+
+MetaInfo ZefaniaLex::readInfo(const QString &name)
+{
+    DEBUG_FUNC_NAME
+    QFile file(name);
+    int couldBe = 0;//1 = RMac
+    QString uid = "";
+    QString type;
+    ZefaniaXmlReader reader(name);
+    MetaInfo info = reader.readMetaInfo();
+
+    //open the xml file
+    if(!file.open(QFile::ReadOnly | QFile::Text))
+        return MetaInfo();
+    m_xml = new QXmlStreamReader(&file);
+
+
+    if(m_xml->readNextStartElement()) {
+        if(cmp(m_xml->name(), "dictionary")) {
+            type = m_xml->attributes().value("type").toString();
+            if(type != "x-dictionary") {
+                couldBe = -1;// do not scan the keys
+            }
+            while(m_xml->readNextStartElement()) {
+                if(cmp(m_xml->name(), "item")) {
+                    const QString key = m_xml->attributes().value("id").toString();
+                    if(couldBe == 0) {
+                        if(key.toUpper() == "A-APF" || key.toUpper() == "X-NSN" || key.toUpper() == "V-PAP-DPN") {//todo: speed
+                            couldBe = 1;
+                        }
+                    } else {
+                        break;
+                    }
+                } else {
+                    m_xml->skipCurrentElement();
+                }
+            }
+        }
+    }
+
+    if(info.name().isEmpty() && !info.subject.isEmpty()) {
+        info.setName(info.subject);
+    }
+
+    info.setUID(uid);
+    if(type == "x-strong") {
+        info.setDefaultModule(ModuleTools::DefaultStrongDictModule);
+        info.setContent(ModuleTools::StrongsContent);
+    } else if(type == "x-dictionary") {
+        if(couldBe == 1) {
+            info.setDefaultModule(ModuleTools::DefaultRMACDictModule);
+            info.setContent(ModuleTools::RMACContent);
+        } else {
+            info.setDefaultModule(ModuleTools::DefaultDictModule);
+            info.setContent(ModuleTools::DictionaryContent);
+        }
+    }
+
+
+    file.close();
+    delete m_xml;
+    m_xml = nullptr;
+
+    return info;
+}
+
+/**
+  Returns a Entry.
+  \id The key of the entry.
+  */
+Response * ZefaniaLex::getEntry(const QString &key)
+{
+    try {
+        if(!hasIndex()) {
+            if(buildIndex() != 0) {
+                return new StringResponse(QObject::tr("Cannot build index."));
+            }
+        }
+        const QString index = indexPath();
+        std::string keyStr = SearchTools::toStdString(key);
+
+        Xapian::Database db(index.toStdString());
+        QString ret = "";
+        for(auto it = db.postlist_begin(""); it != db.postlist_end(""); ++it) {
+            Xapian::Document doc = db.get_document(*it);
+            if(doc.get_value(0) == keyStr) {
+                if(!ret.isEmpty())
+                    ret.append("<hr /> ");
+                ret.append(SearchTools::toQString(doc.get_data()));
+            }
+        }
+        return ret.isEmpty() ? new StringResponse(QObject::tr("Nothing found for %1").arg(key)) : new StringResponse(ret);
+    } catch(...) {
+        return new StringResponse(QString());
+    }
+}
+
+QStringList ZefaniaLex::getAllKeys()
+{
+    if(!m_entryList.isEmpty()) {
+        return m_entryList;
+    }
+    try {
+        if(!hasIndex()) {
+            if(buildIndex() != 0) {
+                return QStringList();
+            }
+        }
+        const QString index = indexPath();
+        Xapian::Database db(index.toStdString());
+        QStringList ret;
+        for(auto it = db.postlist_begin(""); it != db.postlist_end(""); ++it) {
+            Xapian::Document doc = db.get_document(*it);
+            ret.append(SearchTools::toQString(doc.get_value(0)));
+        }
+        m_entryList = ret;
+        return ret;
+    }
+    catch(Xapian::Error &err) {
+        myWarning() << "xapian error = " << err.get_msg();
+        return QStringList();
+
+    }
+    catch(...) {
+        return QStringList();
+    }
+}
+
+bool ZefaniaLex::hasIndex()
+{
+    QDir d;
+    if(!d.exists(m_settings->homePath + "index")) {
+        return false;
+    }
+    const QString index = indexPath();
+    try {
+        Xapian::Database db(index.toStdString());
+        db.close();
+        return true;
+    } catch (const Xapian::Error&) {
+        return false;
+    }
+}
+int ZefaniaLex::buildIndex()
+{
+    DEBUG_FUNC_NAME;
+
+    myDebug() << "building index!!!";
+    QFile file(m_modulePath);
+    const QString index = indexPath();
+    QDir dir("/");
+    dir.mkpath(index);
+
+
+    m_refText.setSettings(m_settings);
+
+    //open the xml file
+    if(!file.open(QFile::ReadOnly | QFile::Text))
+        return 1;
+    m_xml = new QXmlStreamReader(&file);
+
+    try {
+
+        Xapian::WritableDatabase db(index.toStdString(), Xapian::DB_CREATE_OR_OVERWRITE);
+        Xapian::TermGenerator tg;
+
+        if(m_xml->readNextStartElement()) {
+            if(cmp(m_xml->name(), "dictionary")) {
+                while(m_xml->readNextStartElement()) {
+                    if(cmp(m_xml->name(), "item")) {
+                        QString content;
+                        const QString key = m_xml->attributes().value("id").toString();
+                        bool hasTitle = false;
+                        while(true) {
+                            m_xml->readNext();
+
+                            if(m_xml->tokenType() == QXmlStreamReader::EndElement && (cmp(m_xml->name(), QLatin1String("item"))))
+                                break;
+
+                            if(m_xml->tokenType() == QXmlStreamReader::Characters) {
+                                content += m_xml->text().toString();
+                            } else if(cmp(m_xml->name(), "title")) {
+                                const QString title = parseTitle();
+                                content += "<h3 class='title'>" + key;
+                                if(!title.isEmpty()) {
+                                    content.append(" - " +  title);
+                                }
+                                content.append("</h3>");
+                                hasTitle = true;
+                            } else if(cmp(m_xml->name(), "transliteration")) {
+                                const QString trans = parseTrans();
+                                if(!trans.isEmpty()) {
+                                    content += "<span class='transliteration'>" + trans + "</span>" ;
+                                }
+                            }  else if(cmp(m_xml->name(), "pronunciation")) {
+                                const QString pr = parsePron();
+                                if(!pr.isEmpty()) {
+                                    content += "<span class='pronunciation'>" + pr + "</span>";
+                                }
+                            } else if(cmp(m_xml->name(), "description")) {
+                                content += "<span class='description'>" + parseDesc() + "</span>";
+                            } else {
+                                content += m_xml->readElementText(QXmlStreamReader::IncludeChildElements);
+                            }
+                        }
+                        if(!hasTitle) {
+                            content.prepend("<h3 class='title'>" + key + "</h3>");
+                        }
+
+                        Xapian::Document doc;
+                        doc.set_data(SearchTools::toStdString(content));
+                        doc.add_value(0, SearchTools::toStdString(key));
+                        tg.set_document(doc);
+                        tg.index_text(SearchTools::toStdString(key));
+                        tg.index_text(SearchTools::toStdString(content));
+                        db.add_document(doc);
+
+                    } else {
+                        m_xml->skipCurrentElement();
+                    }
+                }
+            } else {
+                myWarning() << "not a file";
+            }
+        }
+
+        db.commit();
+    }
+    catch(...) {
+    }
+
+    file.close();
+    delete m_xml;
+    m_xml = nullptr;
+    return 0;
+}
+QString ZefaniaLex::parseTitle()
+{
+    QString ret;
+    while(true) {
+        m_xml->readNext();
+
+        if(m_xml->tokenType() == QXmlStreamReader::EndElement && (cmp(m_xml->name(), QLatin1String("title"))))
+            break;
+
+        if(m_xml->tokenType() == QXmlStreamReader::Characters) {
+            ret += m_xml->text().toString();
+        } else {
+            ret += m_xml->readElementText(QXmlStreamReader::IncludeChildElements);
+        }
+    }
+    return ret;
+}
+QString ZefaniaLex::parseTrans()
+{
+    QString ret;
+    while(true) {
+        m_xml->readNext();
+
+        if(m_xml->tokenType() == QXmlStreamReader::EndElement && (cmp(m_xml->name(), QLatin1String("transliteration"))))
+            break;
+
+        if(m_xml->tokenType() == QXmlStreamReader::Characters) {
+            ret += m_xml->text().toString();
+        } else if(cmp(m_xml->name(), "em")) {
+            ret += parseEm();
+        } else {
+            ret += m_xml->readElementText(QXmlStreamReader::IncludeChildElements);
+        }
+    }
+    return ret;
+}
+QString ZefaniaLex::parseEm()
+{
+    const QString pre("<em>");
+    QString post("</em>");
+
+    QString ret;
+    while(true) {
+        m_xml->readNext();
+
+        if(m_xml->tokenType() == QXmlStreamReader::EndElement && (cmp(m_xml->name(), QLatin1String("em"))))
+            break;
+
+        if(m_xml->tokenType() == QXmlStreamReader::Characters) {
+            ret += m_xml->text().toString();
+        } else {
+            ret += m_xml->readElementText(QXmlStreamReader::IncludeChildElements);
+        }
+    }
+    return pre+ret+post;
+}
+
+QString ZefaniaLex::parsePron()
+{
+    QString ret;
+    while(true) {
+        m_xml->readNext();
+
+        if(m_xml->tokenType() == QXmlStreamReader::EndElement && (cmp(m_xml->name(), QLatin1String("pronunciation"))))
+            break;
+
+        if(m_xml->tokenType() == QXmlStreamReader::Characters) {
+            ret += m_xml->text().toString();
+        } else if(cmp(m_xml->name(), "em")) {
+            ret += parseEm();
+        } else {
+            ret += m_xml->readElementText(QXmlStreamReader::IncludeChildElements);
+        }
+    }
+    return ret;
+}
+QString ZefaniaLex::parseDesc()
+{
+    QString ret;
+    while(true) {
+        m_xml->readNext();
+
+        if(m_xml->tokenType() == QXmlStreamReader::EndElement && (cmp(m_xml->name(), QLatin1String("description"))))
+            break;
+
+        if(m_xml->tokenType() == QXmlStreamReader::Characters) {
+            ret += m_xml->text().toString();
+        } else if(cmp(m_xml->name(), "em")) {
+            ret += parseEm();
+        } else if(cmp(m_xml->name(), "see")) {
+            ret += parseSee();
+        } else if(cmp(m_xml->name(), "reflink")) {
+            ret += parseReflink();
+        } else {
+            ret += m_xml->readElementText(QXmlStreamReader::IncludeChildElements);
+        }
+    }
+    return ret;
+}
+
+QString ZefaniaLex::parseReflink()
+{
+    const QStringView fscope = m_xml->attributes().value("fscope");
+    const QStringView mscope = m_xml->attributes().value("mscope");
+    const QStringView target = m_xml->attributes().value("target");
+
+    QString ret;
+    if(!mscope.isEmpty()) {
+        VerseUrl burl;
+        burl.fromMscope(mscope.toString());
+
+        QString text;
+        if(!fscope.isEmpty()) {
+            text = fscope.toString();
+        } else  {
+            text = m_refText.toString(burl);
+        }
+        m_xml->skipCurrentElement();
+        ret = "<span class=\"crossreference\"><a class=\"reflink\" href=\"" + burl.toString() + "\">" + text + "</a></span>";
+
+    } else if(!target.isEmpty()) {
+       /* if(target == "XXX") {
+
+        }*/
+        ret = m_xml->readElementText(QXmlStreamReader::IncludeChildElements);
+    }
+
+    return ret;
+}
+QString ZefaniaLex::parseSee()
+{
+    //todo: currently we assume target = x-self
+    const QStringView target = m_xml->attributes().value("target");
+
+    QString ret;
+    if(!target.isEmpty()) {
+        StrongUrl url;
+        if(url.fromText(m_xml->text().toString()))
+            ret = " <a class='crossreference' href='" + url.toString() + "'>" + m_xml->text().toString() + "</a> ";
+    }
+    m_xml->skipCurrentElement();
+    return ret;
+}
+MetaInfo ZefaniaLex::readMetaInfo(MetaInfo ret)
+{
+    DEBUG_FUNC_NAME
+    while(m_xml->readNextStartElement()) {
+        if(m_xml->name() == QLatin1String("publisher")) {
+            ret.publisher = m_xml->readElementText(QXmlStreamReader::IncludeChildElements);
+        } else if(m_xml->name() == QLatin1String("contributors")) {
+            ret.contributors = m_xml->readElementText(QXmlStreamReader::IncludeChildElements);
+        } else if(m_xml->name() == QLatin1String("date")) {
+            ret.date = m_xml->readElementText(QXmlStreamReader::IncludeChildElements);
+        } else if(m_xml->name() == QLatin1String("type")) {
+            ret.type = m_xml->readElementText(QXmlStreamReader::IncludeChildElements);
+        } else if(m_xml->name() == QLatin1String("format")) {
+            ret.format = m_xml->readElementText(QXmlStreamReader::IncludeChildElements);
+        } else if(m_xml->name() == QLatin1String("identifier")) {
+            ret.identifier = m_xml->readElementText(QXmlStreamReader::IncludeChildElements);
+        } else if(m_xml->name() == QLatin1String("source")) {
+            ret.source = m_xml->readElementText(QXmlStreamReader::IncludeChildElements);
+        } else if(m_xml->name() == QLatin1String("language")) {
+            ret.language = m_xml->readElementText(QXmlStreamReader::IncludeChildElements);
+        } else if(m_xml->name() == QLatin1String("coverage")) {
+            ret.coverage = m_xml->readElementText(QXmlStreamReader::IncludeChildElements);
+        } else if(m_xml->name() == QLatin1String("rights")) {
+            ret.rights = m_xml->readElementText(QXmlStreamReader::IncludeChildElements);
+        } else if(m_xml->name() == QLatin1String("subject")) {
+            ret.subject = m_xml->readElementText(QXmlStreamReader::IncludeChildElements);
+        } else if(m_xml->name() == QLatin1String("description")) {
+            ret.description = m_xml->readElementText(QXmlStreamReader::IncludeChildElements);
+        } else if(m_xml->name() == QLatin1String("creator")) {
+            ret.creator = m_xml->readElementText(QXmlStreamReader::IncludeChildElements);
+        } else if(m_xml->name() == QLatin1String("title")) {
+            ret.setName(m_xml->readElementText(QXmlStreamReader::IncludeChildElements));
+        } else {
+            m_xml->skipCurrentElement();
+        }
+    }
+    return ret;
+}
+QString ZefaniaLex::indexPath() const
+{
+    return m_settings->homePath + "cache/" + m_settings->hash(m_modulePath);
+}
+Response::ResponseType ZefaniaLex::responseType() const
+{
+    return Response::StringReponse;
+}
+bool ZefaniaLex::cmp(const QStringView &r, const QString &s)
+{
+    return r == s || r == s.toLower();
+}
