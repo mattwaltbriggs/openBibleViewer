@@ -1,5 +1,53 @@
 # Changelog
 
+## 0.9.2 (2026-08-27) — Module Download & Print Fixes
+
+### Module download and installation (fixed)
+
+- **QProcess::start(commandString) removed in Qt6**: The `unzip` command used
+  to extract downloaded Bible modules silently failed because
+  `QProcess::start(const QString&)` no longer parses command strings in Qt6.
+  Replaced with `QProcess::startCommand()` so module extraction actually runs.
+- **Preprocessor directives in unzip**: Invalid `#elseif` (should be `#elif`)
+  with Qt5-only macros (`Q_WS_X11`, `Q_WS_MAC`) replaced with
+  `#elif defined(Q_OS_MACOS)` / `#elif defined(Q_OS_LINUX)`.
+- **Download URLs updated**: All SourceForge module catalog URLs changed from
+  HTTP to HTTPS (SourceForge now requires HTTPS).
+- **Download error handling**: `DownloadInFile` now emits `finished` signal on
+  file-open failure (previously halted the entire download chain silently).
+- **SSL error handling**: Qt6 HTTPS connections now handled via
+  `QNetworkReply::sslErrors` → `ignoreSslErrors()`.
+- **Network error checking**: `DownloadInFile::finish()` checks
+  `QNetworkReply::error()` before writing to disk; network failures no longer
+  saved as corrupt module files.
+- **Redirect handling expanded**: HTTP 303/307/308 redirects now followed in
+  addition to 301/302.
+- **Signal connection race fixed**: `ModuleDownloader::download()` connected
+  `finished` signal *after* starting the download — moved `connect()` before
+  `download()` call.
+- **Failed downloads skipped**: `ModuleDownloader::save()` now checks status
+  code and skips failed downloads instead of treating them as success.
+- **Directory creation**: `QDir::mkdir()` replaced with `mkpath()` to create
+  full directory trees.
+- **User-Agent updated**: Replaced obsolete `curl/7.21.2` with
+  `openBibleViewer/0.9.1`.
+- **Auto-save after download**: `SettingsDialog::addModules()` now emits
+  `settingsChanged` immediately after registering downloaded modules, so they
+  appear without requiring the user to click OK.
+
+### Print preview
+
+- **Printer page size**: Removed hardcoded A4 page size; printer now uses
+  the system default page size from the connected printer.
+- **Async print rendering**: `QWebEngineView::print()` is async in Qt6;
+  print preview now blocks via `QEventLoop` + `printFinished` signal for
+  synchronous rendering.
+
+### Bug fixes
+
+- Printer margins set to zero to avoid double-margining with web page CSS.
+- Print preview menu action removed (was causing crashes with old code path).
+
 ## 0.9.1 (2026-08-26) — macOS Apple Silicon Port
 
 This release ports openBibleViewer to compile and run natively on

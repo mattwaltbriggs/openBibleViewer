@@ -19,10 +19,12 @@ this program; if not, see <http://www.gnu.org/licenses/>.
 #include <QPrinter>
 #include <QFileInfo>
 #include <QTextStream>
+#include <QEventLoop>
 #include <QPrintPreviewDialog>
 #include <QPrintDialog>
 #include <QFileDialog>
 #include <QTextDocumentWriter>
+#include <QRegularExpression>
 #include <QWebEngineSettings>
 #include <QWebEngineProfile>
 
@@ -62,22 +64,28 @@ void WebViewForm::selectAll()
 
 void WebViewForm::print()
 {
-    QPrinter printer;
-    QPointer<QPrintDialog> dialog = new QPrintDialog(&printer, this);
-    dialog->setWindowTitle(tr("Print"));
-    if(dialog->exec() == QDialog::Accepted) {
-        m_view->print(&printer);
-    }
-    delete dialog;
+    QPrinter printer(QPrinter::HighResolution);
+    printer.setPageMargins(QMarginsF(0, 0, 0, 0), QPageLayout::Millimeter);
+    QPrintPreviewDialog preview(&printer, this);
+    preview.setWindowTitle(tr("Print Preview"));
+    connect(&preview, &QPrintPreviewDialog::paintRequested, this, [this](QPrinter *p) {
+        bool done = false;
+        QEventLoop loop;
+        connect(m_view, &QWebEngineView::printFinished, &loop, [&done, &loop](bool) {
+            done = true;
+            loop.quit();
+        });
+        m_view->print(p);
+        if (!done) {
+            loop.exec();
+        }
+    });
+    preview.exec();
 }
 
 void WebViewForm::printPreview()
 {
-    QPrinter printer;
-    QPointer<QPrintPreviewDialog> preview = new QPrintPreviewDialog(&printer, this);
-    connect(preview, SIGNAL(paintRequested(QPrinter *)), m_view, SLOT(print(QPrinter *)));
-    preview->exec();
-    delete preview;
+    print();
 }
 
 void WebViewForm::saveFile()

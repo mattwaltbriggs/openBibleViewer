@@ -374,9 +374,10 @@ QMenuBar* AdvancedInterface::menuBar()
     actionPrint->setShortcut(QKeySequence::Print);
     //Print
 
+    //Print Preview (disabled — macOS Qt6 print preview not supported)
     QAction *actionPrintPreview = new QAction(QIcon::fromTheme("document-print-preview", QIcon(":/icons/16x16/document-print-preview.png")), tr("Print Preview"), menuFile);
-    connect(actionPrintPreview, SIGNAL(triggered()), this, SLOT(printPreview()));
-    //actionPrint->setShortcut(QKeySequence::Pr);
+    actionPrintPreview->setEnabled(false);
+    actionPrintPreview->setVisible(false);
 
     //Close
     QAction *actionClose = new QAction(QIcon::fromTheme("application-exit", QIcon(":/icons/16x16/application-exit.png")), tr("Quit"), menuFile);
@@ -388,7 +389,6 @@ QMenuBar* AdvancedInterface::menuBar()
     menuFile->addSeparator();
     menuFile->addAction(actionSaveAs);
     menuFile->addAction(actionPrint);
-    menuFile->addAction(actionPrintPreview);
     menuFile->addSeparator();
     menuFile->addAction(actionClose);
 

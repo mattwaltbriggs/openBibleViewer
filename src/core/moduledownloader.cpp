@@ -35,7 +35,7 @@ int ModuleDownloader::start()
     m_prefix = m_settings->homePath + "modules/downloads/";
     //create folder where the modules should be downloaded
     QDir dir;
-    dir.mkdir(m_prefix);
+    dir.mkpath(m_prefix);
 
     //hack: remove duplicates
     const QSet<QString> set(m_data.keyBegin(), m_data.keyEnd());
@@ -74,8 +74,11 @@ void ModuleDownloader::downloadNext()
 }
 void ModuleDownloader::save(QString url, QString name, int status)
 {
-    Q_UNUSED(status);
-    m_retData[url] = name;
+    if(status < 0) {
+        myWarning() << "download failed for" << url << "status:" << status;
+    } else {
+        m_retData[url] = name;
+    }
     downloadNext();
 }
 
@@ -93,8 +96,8 @@ void ModuleDownloader::download(const QString &url_)
     d->setFolder(m_prefix);
     d->setName(m_data[url_]);
 
-    d->download();
     connect(d, SIGNAL(finished(QString, QString, int)), this, SLOT(save(QString, QString, int)));
     connect(d, SIGNAL(progress(qint64, qint64)), this, SIGNAL(updateProgress(qint64, qint64)));
+    d->download();
 }
 

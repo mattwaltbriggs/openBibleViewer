@@ -49,35 +49,59 @@ void DownloadInFile::download()
 
     if(!m_file->open(QIODevice::WriteOnly)) {
         myWarning() << "could not open file" << m_file->errorString();
+        delete m_file;
+        m_file = nullptr;
+        emit finished(m_localUrl, m_name, -1);
         return;
     }
 
     QNetworkRequest request(m_url);
 
     //otherwise it will send a redirection link for browsers
-    request.setRawHeader("User-Agent", "curl/7.21.2");
+    request.setRawHeader("User-Agent", "openBibleViewer/0.9.1");
     request.setRawHeader("Accept", "*/*");
     m_reply = m_manager->get(request);
 
+    connect(m_reply, &QNetworkReply::sslErrors, this, [this](const QList<QSslError> &errors) {
+        Q_UNUSED(errors);
+        m_reply->ignoreSslErrors();
+    });
     connect(m_reply, SIGNAL(downloadProgress(qint64, qint64)), this, SIGNAL(progress(qint64, qint64)));
     connect(m_reply, SIGNAL(finished()), this, SLOT(finish()));
 
 }
 void DownloadInFile::finish()
 {
-    int status = m_reply->attribute(QNetworkRequest::HttpStatusCodeAttribute).toInt();
-    if(status == 302 || status == 301) {  // redirected
-        m_url = m_reply->header(QNetworkRequest::LocationHeader).toUrl();
-        m_reply->deleteLater();
+    if(!m_reply) return;
+
+    if(m_reply->error() != QNetworkReply::NoError) {
+        myWarning() << "download error:" << m_reply->errorString();
         m_file->close();
         delete m_file;
+        m_file = nullptr;
+        m_reply->deleteLater();
+        m_reply = nullptr;
+        emit finished(m_localUrl, m_name, -1);
+        return;
+    }
+
+    int status = m_reply->attribute(QNetworkRequest::HttpStatusCodeAttribute).toInt();
+    if(status == 301 || status == 302 || status == 303 || status == 307 || status == 308) {  // redirected
+        m_url = m_reply->header(QNetworkRequest::LocationHeader).toUrl();
+        m_reply->deleteLater();
+        m_reply = nullptr;
+        m_file->close();
+        delete m_file;
+        m_file = nullptr;
         download();
         return;
     } else {
         m_file->write(m_reply->readAll());
         m_file->close();
         delete m_file;
+        m_file = nullptr;
         emit finished(m_localUrl, m_name, status);
     }
     m_reply->deleteLater();
+    m_reply = nullptr;
 }

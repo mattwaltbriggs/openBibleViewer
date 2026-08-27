@@ -537,13 +537,13 @@ QStringList ModuleTools::unzip(const QString &zipFile, const QString &path)
     QFileInfo i(zipFile);
     QProcess unzip;
     #ifdef Q_OS_WIN
-        unzip.start("7za.exe e \"" + zipFile + "\" -y -o\"" + path + i.baseName()+"\"");
-    #elseif Q_WS_X11
-        unzip.start("unzip -o \"" + zipFile + "\" -d\"" + path + i.baseName()+"\"");
-    #elseif Q_WS_MAC
-        unzip.start("unzip -o \"" + zipFile + " -d" + path + i.baseName()+"\"");
+        unzip.startCommand("7za.exe e \"" + zipFile + "\" -y -o\"" + path + i.baseName()+"\"");
+    #elif defined(Q_OS_MACOS) || defined(Q_OS_MAC)
+        unzip.startCommand("unzip -o \"" + zipFile + "\" -d\"" + path + i.baseName()+"\"");
+    #elif defined(Q_OS_LINUX)
+        unzip.startCommand("unzip -o \"" + zipFile + "\" -d\"" + path + i.baseName()+"\"");
     #else
-        unzip.start("unzip -o \"" + zipFile + "\" -d\"" + path + i.baseName()+"\"");
+        unzip.startCommand("unzip -o \"" + zipFile + "\" -d\"" + path + i.baseName()+"\"");
     #endif
     unzip.waitForFinished(-1);
     myDebug() << "exit code" << unzip.exitCode();

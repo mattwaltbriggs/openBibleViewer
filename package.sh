@@ -2,7 +2,7 @@
 set -e
 
 APP_NAME="openBibleViewer"
-VERSION="0.9.1"
+VERSION="0.9.2"
 BUILD_DIR="build"
 APP_BUNDLE="${BUILD_DIR}/${APP_NAME}.app"
 CONTENTS="${APP_BUNDLE}/Contents"
@@ -64,14 +64,61 @@ fi
 
 # Fix library paths
 echo "[7/8] Fixing library paths..."
-# Rewrite all @rpath and /opt/homebrew references to use @executable_path/../Frameworks
+BINARY="${CONTENTS}/MacOS/${APP_NAME}"
+chmod u+w "${BINARY}"
+
+# Rewrite ALL /opt/homebrew references in the binary to @executable_path/../Frameworks
+# Original refs look like: /opt/homebrew/opt/qtbase/lib/QtXml.framework/Versions/A/QtXml
+# Must map to:              @executable_path/../Frameworks/QtXml.framework/Versions/A/QtXml
+for ref in $(otool -L "${BINARY}" | grep '/opt/homebrew' | awk '{print $1}'); do
+    # Extract from the first .framework/ onward (the framework-relative path including framework name)
+    FWREL=$(echo "${ref}" | sed -n 's|.*/\([^/]*\.framework/.*\)|\1|p')
+    if [ -n "${FWREL}" ]; then
+        install_name_tool -change "${ref}" "@executable_path/../Frameworks/${FWREL}" "${BINARY}" 2>/dev/null || true
+    else
+        # Standalone dylib (e.g. libxapian.45.dylib)
+        install_name_tool -change "${ref}" "@executable_path/../Frameworks/$(basename "${ref}")" "${BINARY}" 2>/dev/null || true
+    fi
+done
+
+# Fix self-referencing install names in all framework dylibs
 for dylib in "${CONTENTS}/Frameworks/"*.dylib; do
     [ -f "${dylib}" ] || continue
     chmod u+w "${dylib}"
-    # Fix self-referencing install names
-    DNAME=$(basename "${dylib}")
-    install_name_tool -id "@executable_path/../Frameworks/${DNAME}" "${dylib}" 2>/dev/null || true
+    install_name_tool -id "@executable_path/../Frameworks/$(basename "${dylib}")" "${dylib}" 2>/dev/null || true
 done
+
+# Fix install names inside frameworks
+for fw in "${CONTENTS}/Frameworks/"*.framework; do
+    [ -d "${fw}" ] || continue
+    FWNAME=$(basename "${fw}")
+    ORIG_ID=$(otool -D "${fw}" 2>/dev/null | tail -1)
+    if [ -n "${ORIG_ID}" ]; then
+        install_name_tool -id "@executable_path/../Frameworks/${FWNAME}/Versions/A/${FWNAME}" "${fw}" 2>/dev/null || true
+    fi
+    for sub in "${fw}/Versions/A/"*.dylib; do
+        [ -f "${sub}" ] || continue
+        chmod u+w "${sub}"
+        SUBNAME=$(basename "${sub}")
+        install_name_tool -id "@executable_path/../Frameworks/${FWNAME}/Versions/A/${SUBNAME}" "${sub}" 2>/dev/null || true
+        for subref in $(otool -L "${sub}" | grep '/opt/homebrew' | awk '{print $1}'); do
+            install_name_tool -change "${subref}" "@executable_path/../Frameworks/$(basename "${subref}")" "${sub}" 2>/dev/null || true
+        done
+    done
+done
+
+# Fix inter-dylib references in Frameworks/
+for dylib in "${CONTENTS}/Frameworks/"*.dylib; do
+    [ -f "${dylib}" ] || continue
+    for ref in $(otool -L "${dylib}" | grep '/opt/homebrew' | awk '{print $1}'); do
+        install_name_tool -change "${ref}" "@executable_path/../Frameworks/$(basename "${ref}")" "${dylib}" 2>/dev/null || true
+    done
+done
+
+# Remove any /opt/homebrew rpath, add correct one
+install_name_tool -delete_rpath "/opt/homebrew/opt/qtbase/lib" "${BINARY}" 2>/dev/null || true
+install_name_tool -delete_rpath "/opt/homebrew/opt/qtwebengine/lib" "${BINARY}" 2>/dev/null || true
+install_name_tool -add_rpath "@executable_path/../Frameworks" "${BINARY}" 2>/dev/null || true
 
 # QtWebEngineProcess helper needs libraries too
 WEBENGINE_HELPER="${CONTENTS}/Frameworks/QtWebEngineCore.framework/Versions/A/Helpers/QtWebEngineProcess.app"
@@ -87,29 +134,40 @@ if [ -d "${WEBENGINE_HELPER}" ]; then
     done
 fi
 
-# Re-link the main binary's Xapian reference (macdeployqt may have re-written it)
-BINARY="${CONTENTS}/MacOS/${APP_NAME}"
+# Re-link the main binary's Xapian reference
 chmod u+w "${BINARY}"
-install_name_tool -change "${XAPIAN_REAL}" "@executable_path/../Frameworks/libxapian.dylib" "${BINARY}" 2>/dev/null || \
-install_name_tool -change "${XAPIAN_LIB}" "@executable_path/../Frameworks/libxapian.dylib" "${BINARY}" 2>/dev/null || true
-
-# Ensure rpath exists
-install_name_tool -add_rpath "@executable_path/../Frameworks" "${BINARY}" 2>/dev/null || true
+install_name_tool -change "${XAPIAN_REAL}" "@executable_path/../Frameworks/libxapian.45.dylib" "${BINARY}" 2>/dev/null || \
+install_name_tool -change "${XAPIAN_LIB}" "@executable_path/../Frameworks/libxapian.45.dylib" "${BINARY}" 2>/dev/null || true
 chmod u-w "${BINARY}"
 
 # Re-sign everything (ad-hoc) — required on Apple Silicon
+# Sign bottom-up: dylibs, then frameworks, then helpers, then app
 echo "[8/8] Code signing (ad-hoc)..."
-# Sign frameworks first (they are dependencies)
 for dylib in "${CONTENTS}/Frameworks/"*.dylib; do
     [ -f "${dylib}" ] || continue
     codesign --force --sign - "${dylib}" 2>/dev/null || true
 done
+# Sign QtWebEngineProcess helper FIRST (before its parent framework)
+WEBENGINE_HELPER="${CONTENTS}/Frameworks/QtWebEngineCore.framework/Versions/A/Helpers/QtWebEngineProcess.app"
+if [ -d "${WEBENGINE_HELPER}" ]; then
+    # Sign inner dylibs/frameworks
+    for f in "${WEBENGINE_HELPER}/Contents/Frameworks/"*.dylib "${WEBENGINE_HELPER}/Contents/Frameworks/"*.framework; do
+        [ -e "$f" ] || continue
+        codesign --force --sign - "$f" 2>/dev/null || true
+    done
+    codesign --force --sign - "${WEBENGINE_HELPER}/Contents/MacOS/QtWebEngineProcess" 2>/dev/null || true
+    codesign --force --sign - "${WEBENGINE_HELPER}" 2>/dev/null || true
+fi
+# Sign frameworks (QtWebEngineCore individually, then the rest)
+codesign --force --sign - "${CONTENTS}/Frameworks/QtWebEngineCore.framework" 2>/dev/null || true
 for fw in "${CONTENTS}/Frameworks/"*.framework; do
     [ -d "${fw}" ] || continue
-    codesign --force --deep --sign - "${fw}" 2>/dev/null || true
+    FWBASE=$(basename "${fw}")
+    [ "${FWBASE}" = "QtWebEngineCore.framework" ] && continue
+    codesign --force --sign - "${fw}" 2>/dev/null || true
 done
-# Sign the app bundle
-codesign --force --deep --sign - "${APP_BUNDLE}"
+# Sign the app bundle last
+codesign --force --sign - "${APP_BUNDLE}"
 
 echo ""
 echo "Verifying signature..."

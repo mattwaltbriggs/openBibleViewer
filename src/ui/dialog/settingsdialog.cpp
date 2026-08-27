@@ -422,6 +422,7 @@ void SettingsDialog::downloadModule()
 
 void SettingsDialog::addModules(const QMap<QString, QString> &data)
 {
+    myDebug() << "addModules called with" << data.size() << "items" << data;
     addModules(data.keys(), data.values());
 }
 
@@ -451,6 +452,8 @@ void SettingsDialog::addModules(const QStringList &fileName, const QStringList &
         }
         generateModuleTree();
         progress.close();
+        m_modifedModuleSettings = true;
+        emit settingsChanged(m_set, true);
     }
 }
 
@@ -460,7 +463,9 @@ int SettingsDialog::quiteAddModule(const QString &f, int parentID, const QString
     myDebug()  << f << parentID << name;
     QFileInfo fileInfo(f);
     if(fileInfo.suffix() == "zip") {
+        myDebug() << "unzipping" << f << "to" << m_set.homePath + "modules/";
         QStringList files = ModuleTools::unzip(f, m_set.homePath + "modules/");
+        myDebug() << "unzip returned" << files.size() << "files:" << files;
         //remove file
         QFile a(f);
         a.remove();
