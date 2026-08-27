@@ -1140,8 +1140,9 @@ void BibleForm::exportSelection()
                 selection.endVerse = obj.value("endVerse").toInt(-1);
             }
             QString reference;
-            if(selection.startVerse != -1 && selection.moduleID != -1
-               && selection.bookID != -1 && selection.startChapterID != -1) {
+            bool selectionValid = (selection.startVerse != -1 && selection.moduleID != -1
+                                   && selection.bookID != -1 && selection.startChapterID != -1);
+            if(selectionValid) {
                 m_lastSelection = selection;
                 Ranges ranges;
                 if(selection.startChapterID == selection.endChapterID) {
@@ -1172,6 +1173,11 @@ void BibleForm::exportSelection()
                 RefText refText(m_settings);
                 refText.setShowModuleName(true);
                 reference = refText.toString(ranges);
+            }
+            if(reference.isEmpty() && m_lastTextRanges.source().getList().size() > 0) {
+                RefText refText(m_settings);
+                refText.setShowModuleName(true);
+                reference = refText.toString(m_lastTextRanges.source());
             }
             exportWriteFile(text, text, reference, fileName);
         });
