@@ -152,7 +152,13 @@ void WebViewForm::exportWriteFile(const QString &html, const QString &plainText,
         tr("Plain Text (*.txt);;HTML (*.html);;Rich Text - Word (*.rtf);;WordPerfect (*.wpd);;Open Document Text (*.odt)"));
     if(fileName.isEmpty())
         return;
+    QFileInfo fi(fileName);
+    m_settings->session.setData("lastSaveFilePlace", fi.path());
+    exportWriteFile(html, plainText, reference, fileName);
+}
 
+void WebViewForm::exportWriteFile(const QString &html, const QString &plainText, const QString &reference, const QString &fileName)
+{
     QFileInfo fi(fileName);
     m_settings->session.setData("lastSaveFilePlace", fi.path());
 

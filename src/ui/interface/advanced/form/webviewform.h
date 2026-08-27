@@ -88,6 +88,7 @@ protected:
 
     virtual void addJS(const QString &url);
     void exportWriteFile(const QString &html, const QString &plainText, const QString &reference);
+    void exportWriteFile(const QString &html, const QString &plainText, const QString &reference, const QString &fileName);
     static QString htmlToRtf(const QString &html);
 
     template <typename T> void addApi(T *t)

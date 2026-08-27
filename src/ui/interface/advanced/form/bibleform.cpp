@@ -17,6 +17,7 @@ this program; if not, see <http://www.gnu.org/licenses/>.
 #include <QPointer>
 #include <QJsonDocument>
 #include <QJsonObject>
+#include <QFileDialog>
 #include "src/core/verse/reftext.h"
 #include "src/core/link/urlconverter2.h"
 #include "src/core/module/response/textrangesresponse.h"
@@ -1093,10 +1094,17 @@ void BibleForm::exportPassage()
     refText.setShowModuleName(true);
     const QString reference = refText.toString(ranges);
 
-    m_view->page()->toHtml([this, reference](const QString &html) {
+    const QString lastPlace = m_settings->session.getData("lastSaveFilePlace").toString();
+    const QString fileName = QFileDialog::getSaveFileName(this,
+        tr("Export Passage"), lastPlace,
+        tr("Plain Text (*.txt);;HTML (*.html);;Rich Text - Word (*.rtf);;WordPerfect (*.wpd);;Open Document Text (*.odt)"));
+    if(fileName.isEmpty())
+        return;
+
+    m_view->page()->toHtml([this, reference, fileName](const QString &html) {
         QTextDocument doc;
         doc.setHtml(html);
-        exportWriteFile(html, doc.toPlainText(), reference);
+        exportWriteFile(html, doc.toPlainText(), reference, fileName);
     });
 }
 
@@ -1108,12 +1116,17 @@ void BibleForm::exportSelection()
     QString text = m_view->selectedText();
     if(text.isEmpty())
         return;
+    QString fileName = QFileDialog::getSaveFileName(this,
+        tr("Export Selection"), QString(),
+        tr("Text (*.txt);;HTML (*.html);;Rich Text (*.rtf);;WordPerfect (*.wpd);;Open Document (*.odt)"));
+    if(fileName.isEmpty())
+        return;
     m_view->page()->runJavaScript(
         "(function(){ var vS = new VerseSelection(); vS.getSelection(); "
         "return JSON.stringify({moduleID:vS.moduleID, bookID:vS.bookID, "
         "startChapterID:vS.startChapterID, endChapterID:vS.endChapterID, "
         "startVerse:vS.startVerse, endVerse:vS.endVerse}); })();",
-        [this, text](const QVariant &v){
+        [this, text, fileName](const QVariant &v){
             VerseSelection selection;
             QByteArray json = v.toByteArray();
             QJsonDocument doc = QJsonDocument::fromJson(json);
@@ -1126,41 +1139,41 @@ void BibleForm::exportSelection()
                 selection.startVerse = obj.value("startVerse").toInt(-1);
                 selection.endVerse = obj.value("endVerse").toInt(-1);
             }
-            if(selection.startVerse == -1 || selection.moduleID == -1
-               || selection.bookID == -1 || selection.startChapterID == -1) {
-                return;
-            }
-            m_lastSelection = selection;
-            Ranges ranges;
-            if(selection.startChapterID == selection.endChapterID) {
-                Range r;
-                r.setModule(selection.moduleID);
-                r.setBook(selection.bookID);
-                r.setChapter(selection.startChapterID);
-                r.setStartVerse(selection.startVerse);
-                r.setEndVerse(selection.endVerse);
-                ranges.addRange(r);
-            } else {
-                for(int i = selection.startChapterID; i <= selection.endChapterID; i++) {
+            QString reference;
+            if(selection.startVerse != -1 && selection.moduleID != -1
+               && selection.bookID != -1 && selection.startChapterID != -1) {
+                m_lastSelection = selection;
+                Ranges ranges;
+                if(selection.startChapterID == selection.endChapterID) {
                     Range r;
                     r.setModule(selection.moduleID);
                     r.setBook(selection.bookID);
-                    r.setChapter(i);
-                    if(i == selection.startChapterID)
-                        r.setStartVerse(selection.startVerse);
-                    else
-                        r.setStartVerse(0);
-                    if(i == selection.endChapterID)
-                        r.setEndVerse(selection.endVerse);
-                    else
-                        r.setEndVerse(m_settings->getModuleSettings(selection.moduleID)->getV11n()->maxVerse().value(selection.bookID).at(i));
+                    r.setChapter(selection.startChapterID);
+                    r.setStartVerse(selection.startVerse);
+                    r.setEndVerse(selection.endVerse);
                     ranges.addRange(r);
+                } else {
+                    for(int i = selection.startChapterID; i <= selection.endChapterID; i++) {
+                        Range r;
+                        r.setModule(selection.moduleID);
+                        r.setBook(selection.bookID);
+                        r.setChapter(i);
+                        if(i == selection.startChapterID)
+                            r.setStartVerse(selection.startVerse);
+                        else
+                            r.setStartVerse(0);
+                        if(i == selection.endChapterID)
+                            r.setEndVerse(selection.endVerse);
+                        else
+                            r.setEndVerse(m_settings->getModuleSettings(selection.moduleID)->getV11n()->maxVerse().value(selection.bookID).at(i));
+                        ranges.addRange(r);
+                    }
                 }
+                RefText refText(m_settings);
+                refText.setShowModuleName(true);
+                reference = refText.toString(ranges);
             }
-            RefText refText(m_settings);
-            refText.setShowModuleName(true);
-            QString reference = refText.toString(ranges);
-            exportWriteFile(text, text, reference);
+            exportWriteFile(text, text, reference, fileName);
         });
 }
 
