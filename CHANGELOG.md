@@ -1,14 +1,16 @@
 # Changelog
 
-## 0.9.4 (2026-08-27) — Fix Export Selection Reference
+## 0.9.4 (2026-08-27) — Fix Export Selection crash and reference
 
-- **Fix**: Export Selection now correctly displays the book name, chapter, and
-  verse reference in the header. The previous release showed wrong values
-  because `verseSelection()` used multiple async JavaScript calls that hadn't
-  completed by the time the function returned. Rewrote to use a single
-  `runJavaScript` call returning a JSON object with a blocking `QEventLoop`.
-- **Fix**: Export Selection calls `verseSelection()` directly instead of relying
-  on a stale `m_lastSelection` that was only populated by the context menu.
+- **Fix**: Export Selection no longer crashes. The previous release passed
+  invalid module/book IDs (-1) from stale async JavaScript results into
+  `getModuleSettings()`, causing a null pointer dereference.
+- **Fix**: Export Selection now uses a single async `runJavaScript` call
+  that returns a JSON object, processed in the callback. No blocking
+  `QEventLoop` (which could deadlock with WebEngine).
+- **Fix**: Reference header now correctly shows book name, chapter, and verse.
+- **Fix**: Export Selection calls JavaScript directly instead of relying on
+  a stale `m_lastSelection` from the context menu.
 
 ## 0.9.3 (2026-08-27) — Bible Quote Export
 

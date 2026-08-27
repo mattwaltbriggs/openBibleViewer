@@ -15,8 +15,6 @@ this program; if not, see <http://www.gnu.org/licenses/>.
 #include "ui_bibleform.h"
 #include <algorithm>
 #include <QPointer>
-#include <QEventLoop>
-#include <QTimer>
 #include <QJsonDocument>
 #include <QJsonObject>
 #include "src/core/verse/reftext.h"
@@ -1107,45 +1105,63 @@ void BibleForm::exportSelection()
     if(!m_moduleManager->verseTableLoaded(m_verseTable)) {
         return;
     }
-    VerseSelection selection = verseSelection();
-    if(selection.startVerse == -1) {
-        return;
-    }
-    m_lastSelection = selection;
-    QString reference;
-    Ranges ranges;
-    if(selection.startChapterID == selection.endChapterID) {
-        Range r;
-        r.setModule(selection.moduleID);
-        r.setBook(selection.bookID);
-        r.setChapter(selection.startChapterID);
-        r.setStartVerse(selection.startVerse);
-        r.setEndVerse(selection.endVerse);
-        ranges.addRange(r);
-    } else {
-        for(int i = selection.startChapterID; i <= selection.endChapterID; i++) {
-            Range r;
-            r.setModule(selection.moduleID);
-            r.setBook(selection.bookID);
-            r.setChapter(i);
-            if(i == selection.startChapterID)
-                r.setStartVerse(selection.startVerse);
-            else
-                r.setStartVerse(0);
-            if(i == selection.endChapterID)
-                r.setEndVerse(selection.endVerse);
-            else
-                r.setEndVerse(m_settings->getModuleSettings(selection.moduleID)->getV11n()->maxVerse().value(selection.bookID).at(i));
-            ranges.addRange(r);
-        }
-    }
-    RefText refText(m_settings);
-    refText.setShowModuleName(true);
-    reference = refText.toString(ranges);
     QString text = m_view->selectedText();
     if(text.isEmpty())
         return;
-    exportWriteFile(text, text, reference);
+    m_view->page()->runJavaScript(
+        "(function(){ var vS = new VerseSelection(); vS.getSelection(); "
+        "return JSON.stringify({moduleID:vS.moduleID, bookID:vS.bookID, "
+        "startChapterID:vS.startChapterID, endChapterID:vS.endChapterID, "
+        "startVerse:vS.startVerse, endVerse:vS.endVerse}); })();",
+        [this, text](const QVariant &v){
+            VerseSelection selection;
+            QByteArray json = v.toByteArray();
+            QJsonDocument doc = QJsonDocument::fromJson(json);
+            if(doc.isObject()) {
+                QJsonObject obj = doc.object();
+                selection.moduleID = obj.value("moduleID").toInt(-1);
+                selection.bookID = obj.value("bookID").toInt(-1);
+                selection.startChapterID = obj.value("startChapterID").toInt(-1);
+                selection.endChapterID = obj.value("endChapterID").toInt(-1);
+                selection.startVerse = obj.value("startVerse").toInt(-1);
+                selection.endVerse = obj.value("endVerse").toInt(-1);
+            }
+            if(selection.startVerse == -1 || selection.moduleID == -1
+               || selection.bookID == -1 || selection.startChapterID == -1) {
+                return;
+            }
+            m_lastSelection = selection;
+            Ranges ranges;
+            if(selection.startChapterID == selection.endChapterID) {
+                Range r;
+                r.setModule(selection.moduleID);
+                r.setBook(selection.bookID);
+                r.setChapter(selection.startChapterID);
+                r.setStartVerse(selection.startVerse);
+                r.setEndVerse(selection.endVerse);
+                ranges.addRange(r);
+            } else {
+                for(int i = selection.startChapterID; i <= selection.endChapterID; i++) {
+                    Range r;
+                    r.setModule(selection.moduleID);
+                    r.setBook(selection.bookID);
+                    r.setChapter(i);
+                    if(i == selection.startChapterID)
+                        r.setStartVerse(selection.startVerse);
+                    else
+                        r.setStartVerse(0);
+                    if(i == selection.endChapterID)
+                        r.setEndVerse(selection.endVerse);
+                    else
+                        r.setEndVerse(m_settings->getModuleSettings(selection.moduleID)->getV11n()->maxVerse().value(selection.bookID).at(i));
+                    ranges.addRange(r);
+                }
+            }
+            RefText refText(m_settings);
+            refText.setShowModuleName(true);
+            QString reference = refText.toString(ranges);
+            exportWriteFile(text, text, reference);
+        });
 }
 
 void BibleForm::newColorMark()
@@ -1227,36 +1243,16 @@ void BibleForm::removeMark()
 }
 
     VerseSelection BibleForm::verseSelection()
-{
+    {
     VerseSelection s;
 
-    QEventLoop loop;
-    bool done = false;
-    m_view->page()->runJavaScript(
-        "(function(){ var vS = new VerseSelection(); vS.getSelection(); "
-        "return JSON.stringify({moduleID:vS.moduleID, bookID:vS.bookID, "
-        "startChapterID:vS.startChapterID, endChapterID:vS.endChapterID, "
-        "startVerse:vS.startVerse, endVerse:vS.endVerse, "
-        "selectedText:vS.selectedText}); })();",
-        [&s, &done, &loop](const QVariant &v){
-            QByteArray json = v.toByteArray();
-            QJsonDocument doc = QJsonDocument::fromJson(json);
-            if(doc.isObject()) {
-                QJsonObject obj = doc.object();
-                s.moduleID = obj.value("moduleID").toInt(-1);
-                s.bookID = obj.value("bookID").toInt(-1);
-                s.startChapterID = obj.value("startChapterID").toInt(-1);
-                s.endChapterID = obj.value("endChapterID").toInt(-1);
-                s.startVerse = obj.value("startVerse").toInt(-1);
-                s.endVerse = obj.value("endVerse").toInt(-1);
-                s.selectedText = obj.value("selectedText").toString();
-            }
-            done = true;
-            loop.quit();
-        });
-    QTimer::singleShot(2000, &loop, [&done, &loop]{ if(!done) { done = true; loop.quit(); } });
-    loop.exec();
-
+    m_view->page()->runJavaScript("var vS = new VerseSelection(); vS.getSelection();");
+    m_view->page()->runJavaScript("vS.moduleID;", [&s](const QVariant &v){ s.moduleID = v.toInt(); });
+    m_view->page()->runJavaScript("vS.bookID;", [&s](const QVariant &v){ s.bookID = v.toInt(); });
+    m_view->page()->runJavaScript("vS.startChapterID;", [&s](const QVariant &v){ s.startChapterID = v.toInt(); });
+    m_view->page()->runJavaScript("vS.endChapterID;", [&s](const QVariant &v){ s.endChapterID = v.toInt(); });
+    m_view->page()->runJavaScript("vS.startVerse;", [&s](const QVariant &v){ s.startVerse = v.toInt(); });
+    m_view->page()->runJavaScript("vS.endVerse;", [&s](const QVariant &v){ s.endVerse = v.toInt(); });
     myDebug() << "start verse = " << s.startVerse << " end verse = " << s.endVerse;
 
     const QString startVerseText = m_lastTextRanges.getVerse(s.bookID, s.startChapterID, s.startVerse).data();
@@ -1266,7 +1262,8 @@ void BibleForm::removeMark()
     else
         endVerseText = startVerseText;
 
-    QString selectedText = s.selectedText;
+    QString selectedText;
+    m_view->page()->runJavaScript("vS.selectedText;", [&selectedText](const QVariant &v){ selectedText = v.toString(); });
     myDebug() << "selected text = " << selectedText;
     myDebug() << "startVerseText = " << startVerseText;
     myDebug() << "endVerseText = " << endVerseText;
