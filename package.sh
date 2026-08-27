@@ -2,7 +2,7 @@
 set -e
 
 APP_NAME="openBibleViewer"
-VERSION="0.9.2"
+VERSION="0.9.3"
 BUILD_DIR="build"
 APP_BUNDLE="${BUILD_DIR}/${APP_NAME}.app"
 CONTENTS="${APP_BUNDLE}/Contents"

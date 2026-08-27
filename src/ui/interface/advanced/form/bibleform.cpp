@@ -1081,6 +1081,67 @@ void BibleForm::copyWholeVerse(void)
     }
 }
 
+void BibleForm::exportPassage()
+{
+    if(!m_moduleManager->verseTableLoaded(m_verseTable)) {
+        return;
+    }
+    Ranges ranges = m_lastTextRanges.source();
+    RefText refText(m_settings);
+    refText.setShowModuleName(true);
+    const QString reference = refText.toString(ranges);
+
+    m_view->page()->toHtml([this, reference](const QString &html) {
+        QTextDocument doc;
+        doc.setHtml(html);
+        exportWriteFile(html, doc.toPlainText(), reference);
+    });
+}
+
+void BibleForm::exportSelection()
+{
+    if(!m_moduleManager->verseTableLoaded(m_verseTable)) {
+        return;
+    }
+    VerseSelection selection = m_lastSelection;
+    QString reference;
+    if(selection.startVerse != -1) {
+        Ranges ranges;
+        if(selection.startChapterID == selection.endChapterID) {
+            Range r;
+            r.setModule(selection.moduleID);
+            r.setBook(selection.bookID);
+            r.setChapter(selection.startChapterID);
+            r.setStartVerse(selection.startVerse);
+            r.setEndVerse(selection.endVerse);
+            ranges.addRange(r);
+        } else {
+            for(int i = selection.startChapterID; i <= selection.endChapterID; i++) {
+                Range r;
+                r.setModule(selection.moduleID);
+                r.setBook(selection.bookID);
+                r.setChapter(i);
+                if(i == selection.startChapterID)
+                    r.setStartVerse(selection.startVerse);
+                else
+                    r.setStartVerse(0);
+                if(i == selection.endChapterID)
+                    r.setEndVerse(selection.endVerse);
+                else
+                    r.setEndVerse(m_settings->getModuleSettings(selection.moduleID)->getV11n()->maxVerse().value(selection.bookID).at(i));
+                ranges.addRange(r);
+            }
+        }
+        RefText refText(m_settings);
+        refText.setShowModuleName(true);
+        reference = refText.toString(ranges);
+    }
+    QString text = m_view->selectedText();
+    if(text.isEmpty())
+        return;
+    exportWriteFile(text, text, reference);
+}
+
 void BibleForm::newColorMark()
 {
     if(!m_moduleManager->verseTableLoaded(m_verseTable)) {

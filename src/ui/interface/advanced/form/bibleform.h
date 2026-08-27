@@ -140,6 +140,8 @@ private slots:
 
     void showContextMenu(QContextMenuEvent* ev);
     void copyWholeVerse();
+    void exportPassage();
+    void exportSelection();
     void newColorMark();
     void newCustomColorMark();
     void newBoldMark();

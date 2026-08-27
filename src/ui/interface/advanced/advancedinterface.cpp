@@ -368,6 +368,15 @@ QMenuBar* AdvancedInterface::menuBar()
     connect(actionSaveAs, SIGNAL(triggered()), this, SLOT(saveFile()));
     actionSaveAs->setShortcut(QKeySequence::SaveAs);
 
+    //Export Passage
+    QAction *actionExportPassage = new QAction(QIcon::fromTheme("document-save-as", QIcon(":/icons/16x16/document-save-as.png")), tr("Export Passage..."), menuFile);
+    connect(actionExportPassage, SIGNAL(triggered()), this, SLOT(exportPassage()));
+    actionExportPassage->setShortcut(QKeySequence(Qt::CTRL | Qt::SHIFT | Qt::Key_S));
+
+    //Export Selection
+    QAction *actionExportSelection = new QAction(QIcon::fromTheme("document-save-as", QIcon(":/icons/16x16/document-save-as.png")), tr("Export Selection..."), menuFile);
+    connect(actionExportSelection, SIGNAL(triggered()), this, SLOT(exportSelection()));
+
     //Print
     QAction *actionPrint = new QAction(QIcon::fromTheme("document-print", QIcon(":/icons/16x16/document-print.png")), tr("Print"), menuFile);
     connect(actionPrint, SIGNAL(triggered()), this, SLOT(printFile()));
@@ -388,6 +397,8 @@ QMenuBar* AdvancedInterface::menuBar()
     menuFile->addAction(actionCloseSubWindow);
     menuFile->addSeparator();
     menuFile->addAction(actionSaveAs);
+    menuFile->addAction(actionExportPassage);
+    menuFile->addAction(actionExportSelection);
     menuFile->addAction(actionPrint);
     menuFile->addSeparator();
     menuFile->addAction(actionClose);
@@ -839,6 +850,20 @@ void AdvancedInterface::saveFile(void)
 {
     if(m_windowManager->activeForm()) {
         m_windowManager->activeForm()->saveFile();
+    }
+}
+
+void AdvancedInterface::exportPassage(void)
+{
+    if(m_windowManager->activeForm()) {
+        m_windowManager->activeForm()->exportPassage();
+    }
+}
+
+void AdvancedInterface::exportSelection(void)
+{
+    if(m_windowManager->activeForm()) {
+        m_windowManager->activeForm()->exportSelection();
     }
 }
 

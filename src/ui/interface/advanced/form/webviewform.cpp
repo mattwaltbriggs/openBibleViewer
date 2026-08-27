@@ -19,6 +19,10 @@ this program; if not, see <http://www.gnu.org/licenses/>.
 #include <QPrinter>
 #include <QFileInfo>
 #include <QTextStream>
+#include <QTextCodec>
+#include <QTextCursor>
+#include <QTextDocumentFragment>
+#include <QTextStream>
 #include <QEventLoop>
 #include <QPrintPreviewDialog>
 #include <QPrintDialog>
@@ -122,6 +126,180 @@ void WebViewForm::saveFile()
         m_view->page()->toPlainText([&out](const QString &text){ out << text; });
         file.close();
     }
+}
+
+void WebViewForm::exportPassage()
+{
+    m_view->page()->toHtml([this](const QString &html) {
+        QTextDocument doc;
+        doc.setHtml(html);
+        exportWriteFile(html, doc.toPlainText(), QString());
+    });
+}
+
+void WebViewForm::exportSelection()
+{
+    QString text = m_view->selectedText();
+    if(text.isEmpty())
+        return;
+    exportWriteFile(text, text, QString());
+}
+
+void WebViewForm::exportWriteFile(const QString &html, const QString &plainText, const QString &reference)
+{
+    const QString lastPlace = m_settings->session.getData("lastSaveFilePlace").toString();
+    const QString fileName = QFileDialog::getSaveFileName(this, tr("Export"), lastPlace,
+        tr("Plain Text (*.txt);;HTML (*.html);;Rich Text - Word (*.rtf);;WordPerfect (*.wpd);;Open Document Text (*.odt)"));
+    if(fileName.isEmpty())
+        return;
+
+    QFileInfo fi(fileName);
+    m_settings->session.setData("lastSaveFilePlace", fi.path());
+
+    const QString header = reference.isEmpty() ? QString() : reference + QStringLiteral("\n\n");
+    const QString ext = fi.suffix().toLower();
+
+    if(ext == "html" || ext == "htm") {
+        QFile file(fileName);
+        if(!file.open(QIODevice::WriteOnly | QIODevice::Text))
+            return;
+        QTextStream out(&file);
+        out << "<html><head><meta charset=\"utf-8\"></head><body>";
+        if(!header.isEmpty())
+            out << "<p><strong>" << header << "</strong></p>";
+        out << html;
+        out << "</body></html>";
+        file.close();
+    } else if(ext == "rtf" || ext == "wpd") {
+        QFile file(fileName);
+        if(!file.open(QIODevice::WriteOnly | QIODevice::Text))
+            return;
+        QTextStream out(&file);
+        out << "{\\rtf1\\ansi\\deff0\n";
+        out << "{\\fonttbl{\\f0 Times New Roman;}}\n";
+        out << "{\\colortbl;\\red0\\green0\\blue0;}\n";
+        out << "\\f0\\fs24\n";
+        if(!header.isEmpty()) {
+            out << "{\\b " << header << "}\\par\\pard\n";
+        }
+        QString rtfBody = htmlToRtf(html);
+        out << rtfBody;
+        out << "\\par\n}";
+        file.close();
+    } else if(ext == "odt") {
+        QTextDocument doc;
+        if(!header.isEmpty()) {
+            QTextCursor cursor(&doc);
+            QTextCharFormat bold;
+            bold.setFontWeight(QFont::Bold);
+            cursor.setCharFormat(bold);
+            cursor.insertText(header);
+            cursor.setCharFormat(QTextCharFormat());
+            cursor.insertText(QStringLiteral("\n"));
+        }
+        QTextDocument sourceDoc;
+        sourceDoc.setHtml(html);
+        QTextCursor cursor(&doc);
+        cursor.movePosition(QTextCursor::End);
+        cursor.insertFragment(QTextDocumentFragment(&sourceDoc));
+
+        QTextDocumentWriter writer(fileName, "odf");
+        writer.write(&doc);
+    } else {
+        QFile file(fileName);
+        if(!file.open(QIODevice::WriteOnly | QIODevice::Text))
+            return;
+        QTextStream out(&file);
+        out << header << plainText;
+        file.close();
+    }
+}
+
+QString WebViewForm::htmlToRtf(const QString &html)
+{
+    QString rtf;
+    rtf.reserve(html.size());
+    int i = 0;
+    const int len = html.length();
+    bool inBold = false;
+    bool inItalic = false;
+    bool inSuper = false;
+
+    auto closeAll = [&]() {
+        if(inSuper) { rtf += "\\nosuper "; inSuper = false; }
+        if(inBold) { rtf += "\\b0 "; inBold = false; }
+        if(inItalic) { rtf += "\\i0 "; inItalic = false; }
+    };
+
+    while(i < len) {
+        if(html[i] == '<') {
+            int end = html.indexOf('>', i);
+            if(end == -1) end = len - 1;
+            QString tag = html.mid(i + 1, end - i - 1).trimmed().toLower();
+            bool isClose = tag.startsWith('/');
+            if(isClose) tag = tag.mid(1).trimmed();
+
+            QString tagname = tag.split(' ').first().split('\t').first();
+
+            // skip <style> and <script> blocks entirely
+            if(!isClose && (tagname == "style" || tagname == "script")) {
+                QString closeTag = "</" + tagname;
+                int closePos = html.indexOf(closeTag, end + 1, Qt::CaseInsensitive);
+                if(closePos != -1) {
+                    int closeEnd = html.indexOf('>', closePos);
+                    if(closeEnd != -1)
+                        i = closeEnd + 1;
+                    else
+                        i = len;
+                } else {
+                    i = len;
+                }
+                continue;
+            }
+
+            // skip <head>, <meta>, <link>, <title>, <html>, <body> tags
+            if(tagname == "head" || tagname == "meta" || tagname == "link" ||
+               tagname == "title" || tagname == "html" || tagname == "body" ||
+               tagname == "span" || tagname == "a" || tagname == "img" ||
+               tagname == "table" || tagname == "tr" || tagname == "td" ||
+               tagname == "th" || tagname == "thead" || tagname == "tbody" ||
+               tagname == "style" || tagname == "script" || tagname == "base") {
+                i = end + 1;
+                continue;
+            }
+
+            if(tagname == "p" || tagname == "div") {
+                if(isClose) {
+                    closeAll();
+                    rtf += "\\par ";
+                }
+            } else if(tagname == "br" || tagname == "br/") {
+                closeAll();
+                rtf += "\\line ";
+            } else if(tagname == "b" || tagname == "strong") {
+                if(!isClose && !inBold) { rtf += "\\b "; inBold = true; }
+                else if(isClose && inBold) { rtf += "\\b0 "; inBold = false; }
+            } else if(tagname == "i" || tagname == "em") {
+                if(!isClose && !inItalic) { rtf += "\\i "; inItalic = true; }
+                else if(isClose && inItalic) { rtf += "\\i0 "; inItalic = false; }
+            } else if(tagname == "sup") {
+                if(!isClose && !inSuper) { rtf += "\\super "; inSuper = true; }
+                else if(isClose && inSuper) { rtf += "\\nosuper "; inSuper = false; }
+            }
+            i = end + 1;
+        } else {
+            int next = html.indexOf('<', i);
+            if(next == -1) next = len;
+            QString text = html.mid(i, next - i);
+            text.replace('\\', "\\\\");
+            text.replace('{', "\\{");
+            text.replace('}', "\\}");
+            rtf += text;
+            i = next;
+        }
+    }
+    closeAll();
+    return rtf;
 }
 
 QString WebViewForm::selectedText()

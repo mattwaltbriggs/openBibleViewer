@@ -1,5 +1,26 @@
 # Changelog
 
+## 0.9.3 (2026-08-27) — Bible Quote Export
+
+### Export / Save
+
+- **Export Passage** (`Ctrl+Shift+S`): Export the full displayed bible passage
+  with a formatted reference header (e.g., "Gen 1:1-3 (KJV)").
+- **Export Selection**: Export only the user's highlighted text with its verse
+  reference header.
+- **Five output formats**:
+  - Plain Text (`.txt`)
+  - HTML (`.html`) — styled with bold reference header
+  - Rich Text / Word (`.rtf`) — hand-generated RTF with proper paragraph
+    breaks (`\par`), line breaks (`\line`), bold (`\b`), italic (`\i`),
+    and superscript (`\super`) support; opens natively in Microsoft Word
+  - WordPerfect (`.wpd`) — RTF content saved as `.wpd`; WordPerfect reads
+    RTF natively
+  - Open Document Text (`.odt`) — via QTextDocumentWriter; opens in
+    LibreOffice, Google Docs, and Microsoft Word
+- HTML-to-RTF converter strips `<style>`, `<script>`, and all structural
+  tags so only verse text content appears in the output.
+
 ## 0.9.2 (2026-08-27) — Module Download & Print Fixes
 
 ### Module download and installation (fixed)

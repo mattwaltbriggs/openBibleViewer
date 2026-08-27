@@ -87,6 +87,8 @@ public slots:
     virtual void print() = 0;
     virtual void printPreview() = 0;
     virtual void saveFile() = 0;
+    virtual void exportPassage() = 0;
+    virtual void exportSelection() = 0;
     virtual QString selectedText() = 0;
 
     virtual void zoomIn() = 0;

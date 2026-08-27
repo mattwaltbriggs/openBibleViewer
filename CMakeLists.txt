@@ -43,7 +43,7 @@ else()
 endif()
 
 #### constants ####
-set(OBV_VERSION_NUMBER "0.9.2")
+set(OBV_VERSION_NUMBER "0.9.3")
 set(OBV_VERSION_STATUS "stable")
 set(OBV_BUILD_DATE "2026-08-26")
 

@@ -65,6 +65,8 @@ private slots:
     void parseUrl(QString url, const Actions::OpenLinkModifiers mod);
 
     void saveFile();
+    void exportPassage();
+    void exportSelection();
     void printFile();
     void printPreview();
     void onlineHelp();

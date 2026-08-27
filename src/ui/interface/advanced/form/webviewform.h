@@ -21,6 +21,8 @@ this program; if not, see <http://www.gnu.org/licenses/>.
 #include "src/core/module/response/textrangesresponse.h"
 #include <QWebEngineView>
 #include <QWebEnginePage>
+#include <QTextDocument>
+#include <QTextDocumentWriter>
 class WebViewForm : public Form
 {
     Q_OBJECT
@@ -38,6 +40,8 @@ public slots:
     virtual void print();
     virtual void printPreview();
     virtual void saveFile();
+    virtual void exportPassage();
+    virtual void exportSelection();
     virtual QString selectedText();
 
     virtual void zoomIn();
@@ -83,6 +87,8 @@ public slots:
 protected:
 
     virtual void addJS(const QString &url);
+    void exportWriteFile(const QString &html, const QString &plainText, const QString &reference);
+    static QString htmlToRtf(const QString &html);
 
     template <typename T> void addApi(T *t)
     {
