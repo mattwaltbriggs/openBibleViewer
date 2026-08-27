@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.9.4 (2026-08-27) — Fix Export Selection Reference
+
+- **Fix**: Export Selection now correctly displays the book name, chapter, and
+  verse reference in the header. The previous release showed wrong values
+  because `verseSelection()` used multiple async JavaScript calls that hadn't
+  completed by the time the function returned. Rewrote to use a single
+  `runJavaScript` call returning a JSON object with a blocking `QEventLoop`.
+- **Fix**: Export Selection calls `verseSelection()` directly instead of relying
+  on a stale `m_lastSelection` that was only populated by the context menu.
+
 ## 0.9.3 (2026-08-27) — Bible Quote Export
 
 ### Export / Save
